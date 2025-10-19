@@ -1,0 +1,7 @@
+streamlit
+tensorflow-cpu
+keras
+netifaces2
+scapy
+plotly
+pyshark
