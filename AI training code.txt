@@ -1,0 +1,308 @@
+#Checking for python version and the env in-use
+import sys
+import os
+print("Python version:", sys.version)
+print("Environment:", os.path.dirname(sys.executable))
+
+#If you want to use CPU to train
+!pip install tensorflow==2.17.0
+
+#If you want to use AMD-GPU on linux to train
+!pip install tensorflow-rocm
+
+#If you want to use AMD-GPU or Nvidia-GPU on windows to train
+!pip install tensorflow-directml-plugin
+
+#a lib for calculcation
+!pip install numpy==1.26.4
+
+#a lib for dataframes
+!pip install pandas
+
+#a lib for drawing (shapes and such)
+!pip install plotly
+
+#a lib for used for Randomforest in this code and some shapes
+!pip install scikit-learn
+
+#a lib
+!pip install seaborn
+
+#a lib same as plotly in this code
+!pip install matplotlib
+
+#Checking for what devices tensorflow sees
+from tensorflow.python.client import device_lib
+
+print(device_lib.list_local_devices())
+
+#Getting the dataset in linux
+
+import pandas as pd
+import glob
+import warnings
+warnings.filterwarnings("ignore")
+
+input_directory = '//media//pc-i//M-2//dataset//AllData'
+all_filenames = [f for f in glob.glob(f'{input_directory}//*.csv', recursive=True)]
+
+df = pd.concat([pd.read_csv(f) for f in all_filenames])
+chunk_size = 10000
+
+df.head()
+
+#Getting the dataset in windows
+
+import pandas as pd
+import glob
+import warnings
+warnings.filterwarnings("ignore")
+
+input_directory = 'D:\\dataset\\AllData'
+all_filenames = [f for f in glob.glob(f'{input_directory}\*.csv', recursive=True)]
+
+df = pd.concat([pd.read_csv(f) for f in all_filenames])
+chunk_size = 10000
+
+df.head()
+
+#Summary of DataFrame information
+df.info() 
+
+print('\nNumber of unique values in each column')
+for i in df.columns:
+    print(f'{i} - {df[i].nunique()}')
+    
+print('\nNumber of duplicated rows\n', df.duplicated().sum())
+
+print('\nNumber of missing values in each column\n', df.isnull().sum())
+
+#Data cleaning: remove empty rows
+df.dropna(inplace=True)
+
+#Checking after Data cleaning
+print(df.duplicated().sum())
+
+#Feature engineering: making the 16th feature
+def feature_engineering(data):
+    data['pkt_rate'] = data['num_pkts_in'] - data['duration']
+
+    return data
+
+#Feature engineering: adding the 16th feature
+df = feature_engineering(df)
+
+#Checking after feature engineering
+df
+
+#Using 90% sample of full data
+sample_df = df.sample(frac=0.9, random_state=42)
+
+#Most important features: for graphs
+numerical = ['src_ip','src_port','dest_port', 'num_pkts_in', 'total_entropy', 'bytes_in', 'duration']
+
+#Target label distribution: feature to type of packet
+import plotly.express as px
+
+subject = sample_df['label'].value_counts().reset_index(name='count')
+subject['percentage'] = (subject['count'] / subject['count'].sum()) * 100
+fig = px.bar(subject, x='label', y='count', text='percentage', title='Defects by Priority', template='ggplot2')
+fig.update_traces(texttemplate='%{text:.0f}%')
+fig.show()
+
+#Univariate analysis: packet count per type
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_theme()
+
+for i in numerical:
+    fig, ax = plt.subplots(figsize=(15, 4))
+    fig = sns.histplot(data=sample_df, x=i, hue="label", bins=50, kde=True)
+    fig.set_title(f'{i} ')
+    fig.grid(True)
+    plt.show()
+
+#MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
+
+scaler = MinMaxScaler()
+df[df.drop('label', axis=1).columns] = scaler.fit_transform(df.drop('label', axis=1))
+
+df.head()
+
+#Heatmap: between types and feature
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+# 1. Convert textual values in the 'label' column to numbers
+w = df['label'].replace({'benign': 0, 'outlier': 2, 'malicious': 1}).astype(int)
+
+# 2. Split data into features (z) and target (w)
+z = df.drop('label', axis=1)
+
+# 3. Select only specific numerical columns
+selected_columns = ['src_ip','src_port','dest_port', 'num_pkts_in', 'total_entropy', 'bytes_in', 'duration']
+X_selected = z[selected_columns]
+
+# 4. Calculate the correlation matrix for the selected columns
+corr_matrix = X_selected.corr()
+
+# 5. Plot heatmap to represent the relationships between the selected numerical variables
+plt.figure(figsize=(12, 10))
+sns.heatmap(
+   corr_matrix,
+   annot=True,                  # Display correlation values in cells
+   fmt=".2f",                   # Set decimal precision
+   cmap="coolwarm",             # Color map
+   linewidths=0.5,              # Add lines between cells for clarity
+   vmin=-1, vmax=1,             # Set color range for correlation
+   square=True,                 # Make the heatmap square
+   cbar_kws={"shrink": 0.8}     # Adjust color bar size
+)
+plt.title("Correlation Heatmap of Selected Features", fontsize=16)
+plt.show()
+
+#Distribution %: count in % between each type
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Count the occurrences of each label
+label_counts = df['label'].value_counts()
+
+# Plot using Matplotlib
+plt.figure(figsize=(8, 8))
+plt.pie(label_counts, labels=label_counts.index, autopct=lambda p: '{:.0f}\n({:.1f}%)'.format(p * sum(label_counts) / 100, p))
+
+# Show the plot
+plt.title('Distribution of Labels')
+plt.show()
+
+#Label handling
+from sklearn.model_selection import train_test_split
+
+X = df.drop('label', axis=1) #copying DataFrame without the first col
+y = df['label'] #just the label row
+
+#Encoding target labels: converting type to integer
+y = y.replace({'benign':0, 'outlier':1, 'malicious':1}).astype(int)
+
+#Splitting data into training, validation and test sets (10% split between them)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.05, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.05, random_state=42)
+
+#Defining the model
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.optimizers import Adagrad
+from tensorflow.keras.regularizers import l2
+
+def build_model(input_shape, output_dim, optimizer):
+    model = Sequential()
+    model.add(Dense(2048, activation='relu', input_shape=input_shape))
+    model.add(Dense(1024, activation='relu'))
+    model.add(Dense(512, activation='relu'))
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(128, activation='relu'))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(8, activation='relu'))
+    model.add(Dense(output_dim, activation='softmax'))
+    model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+optimizer = Adagrad(learning_rate=0.001)
+input_shape = (16,)
+output_dim = 2
+model = build_model(input_shape, output_dim, optimizer)
+
+model.summary()
+
+#Callbacks
+from tensorflow.keras.callbacks import ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import ModelCheckpoint
+
+checkpoint_highest = ModelCheckpoint(filepath='D:\\dataset\\WindowsData\\highest_best_model_trained.keras', monitor='val_accuracy', save_best_only=True, mode='max', verbose=1)
+checkpoint_newest = ModelCheckpoint(filepath='D:\\dataset\\WindowsData\\newest_best_model_trained.keras', monitor='val_accuracy', mode='max', verbose=1)
+early_stopping = EarlyStopping(monitor='val_accuracy', patience=4, min_delta=0.0003, restore_best_weights=True,verbose=1)
+reduce_lr = ReduceLROnPlateau(monitor='val_accuracy', factor=0.80, patience=3, min_lr=0.3000,verbose=1)
+
+#Checking before main trainer
+X_small, y_small = X_train[:10000], y_train[:10000]
+history = model.fit(
+    X_small,
+    y_small,
+    validation_data=(X_val[:2000], y_val[:2000]),
+    batch_size=32,
+    epochs=3,
+    verbose=1
+)
+
+#Main train
+history = model.fit(
+        X_train,
+        y_train,
+        validation_data=(X_val, y_val),
+        batch_size=4,
+        epochs=20,
+        callbacks=[early_stopping, reduce_lr, checkpoint_highest,checkpoint_newest],
+        verbose=1
+        )
+
+#preformance graph data
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+
+def performance_graph(history):
+    history_df = pd.DataFrame(history.history)
+    fig, axs = plt.subplots(1, 2, figsize=(15, 4))
+    history_df.loc[2:, ['loss', 'val_loss']].plot(ax=axs[0])
+    history_df.loc[2:, ['accuracy', 'val_accuracy']].plot(ax=axs[1])
+    
+    print(("Best Validation Loss: {:0.4f}" +\
+          "\nBest Validation accuracy: {:0.4f}")\
+          .format(history_df['val_loss'].min(), 
+                  history_df['val_accuracy'].max()))
+
+#Print the performance graph
+performance_graph(history)
+
+#Confusion matrix
+from sklearn.metrics import classification_report, confusion_matrix
+
+def performance_metrics(model, X_test, y_test):
+    
+    preds = model.predict(X_test)
+  
+    preds_labels = preds.argmax(axis=1)
+    target_names = ['benign', 'malicious', 'outlier']
+
+    print(classification_report(y_test, preds_labels, target_names=target_names), '\n')
+
+    cf_matrix = confusion_matrix(y_test, preds_labels, normalize='all')
+    return cf_matrix
+
+#Print the confusion matrix
+cf_matrix = performance_metrics(model, X_test, y_test)
+
+#Testing the model on randomly picked data
+import numpy as np
+
+sample = X_test.sample(n=100)
+preds = model.predict(sample)
+
+#Testing the model on randomly picked data con.
+result = pd.DataFrame(index=range(100), columns=['True', 'Prediction', 'Confidence'])
+target_names = ['benign', 'malicious or outlier' ]
+
+#Testing the model on randomly picked data con.
+for i in range(len(preds)):
+    result['True'].iloc[i] = target_names[y_test[sample.index].values[i]]
+    result['Prediction'].iloc[i] = target_names[np.argmax(preds[i], axis=0)]
+    result['Confidence'].iloc[i] = preds[i].max()
+
+#Testing the model on randomly picked data con.
+result
